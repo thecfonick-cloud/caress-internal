@@ -1,217 +1,242 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Caress Internal</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  const SUPABASE_URL = "https://ydaxkytebtsyclaefrcl.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_KRdc2m1mzedd5GS_14d5bg_4DIUTUp9";
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let currentUser = null;
+
+  // ── Tab switching ──
+  function switchTab(tab) {
+    const isLogin = tab === 'login';
+    document.getElementById('login-form').style.display = isLogin ? '' : 'none';
+    document.getElementById('signup-form').style.display = isLogin ? 'none' : '';
+    document.getElementById('tab-login').classList.toggle('active', isLogin);
+    document.getElementById('tab-signup').classList.toggle('active', !isLogin);
+    document.getElementById('auth-title').textContent = isLogin ? 'Welcome back' : 'Create your account';
+    document.getElementById('auth-subtitle').textContent = isLogin
+      ? 'Sign in to your workspace to continue.'
+      : 'Get started with Caress Internal today.';
+    hideAlerts();
+  }
+
+  // ── Validation helpers ──
+  function isEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function setValid(inputId, errId, ok) {
+    const el = document.getElementById(inputId);
+    const er = document.getElementById(errId);
+    el.classList.toggle('invalid', !ok);
+    el.classList.toggle('valid', ok);
+    er.classList.toggle('show', !ok);
+    return ok;
+  }
+
+  function hideAlerts() {
+    document.getElementById('global-alert').classList.remove('show');
+    document.getElementById('success-alert').classList.remove('show');
+    document.querySelectorAll('.form-input').forEach(i => {
+      i.classList.remove('invalid', 'valid');
+    });
+    document.querySelectorAll('.field-error').forEach(e => e.classList.remove('show'));
+  }
+
+  function showError(msg) {
+    document.getElementById('alert-text').textContent = msg;
+    document.getElementById('global-alert').classList.add('show');
+    document.getElementById('success-alert').classList.remove('show');
+  }
+
+  function showSuccess(msg) {
+    document.getElementById('success-text').textContent = msg;
+    document.getElementById('success-alert').classList.add('show');
+    document.getElementById('global-alert').classList.remove('show');
+  }
+
+  function setLoading(btnId, on) {
+    const btn = document.getElementById(btnId);
+    btn.classList.toggle('loading', on);
+    btn.disabled = on;
+  }
+
+  function makeDisplayName(user) {
+    const metaName =
+      user?.user_metadata?.full_name ||
+      [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(' ').trim();
+
+    if (metaName) return metaName;
+
+    const email = user?.email || '';
+    const local = email.split('@')[0] || 'User';
+    return local
+      .replace(/[._-]+/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function enterDashboardFromUser(user) {
+    currentUser = user;
+    const fullName = makeDisplayName(user);
+    const parts = fullName.trim().split(' ').filter(Boolean);
+    const initials = parts.map(p => p[0] || '').join('').toUpperCase().slice(0, 2) || 'U';
+    const first = parts[0] || 'there';
+
+    document.getElementById('user-avatar').textContent = initials;
+    document.getElementById('user-name-display').textContent = fullName;
+    document.getElementById('greeting-name').textContent = first;
+
+    document.getElementById('auth-page').style.display = 'none';
+    document.getElementById('dashboard-page').style.display = 'flex';
+    hideAlerts();
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    hideAlerts();
+
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-pass').value;
+
+    let ok = true;
+    if (!setValid('login-email', 'login-email-err', isEmail(email))) ok = false;
+    if (!setValid('login-pass', 'login-pass-err', pass.length > 0)) ok = false;
+    if (!ok) return;
+
+    setLoading('login-btn', true);
+
+    const { data, error } = await sb.auth.signInWithPassword({
+      email,
+      password: pass
+    });
+
+    setLoading('login-btn', false);
+
+    if (error) {
+      showError(error.message);
+      return;
     }
 
-    body {
-      background: #f4f7fb;
-      color: #1f2937;
+    showSuccess('Signed in successfully. Loading workspace…');
+    setTimeout(() => enterDashboardFromUser(data.user), 500);
+  }
+
+  async function handleSignup(e) {
+    e.preventDefault();
+    hideAlerts();
+
+    const fn = document.getElementById('signup-fname').value.trim();
+    const ln = document.getElementById('signup-lname').value.trim();
+    const em = document.getElementById('signup-email').value.trim();
+    const p1 = document.getElementById('signup-pass').value;
+    const p2 = document.getElementById('signup-pass2').value;
+
+    let ok = true;
+    if (!setValid('signup-fname', 'fname-err', fn.length > 0)) ok = false;
+    if (!setValid('signup-lname', 'lname-err', ln.length > 0)) ok = false;
+    if (!setValid('signup-email', 'signup-email-err', isEmail(em))) ok = false;
+    if (!setValid('signup-pass', 'signup-pass-err', p1.length >= 8)) ok = false;
+    if (!setValid('signup-pass2', 'signup-pass2-err', p2 === p1 && p2.length > 0)) ok = false;
+    if (!ok) return;
+
+    setLoading('signup-btn', true);
+
+    const { data, error } = await sb.auth.signUp({
+      email: em,
+      password: p1,
+      options: {
+        data: {
+          first_name: fn,
+          last_name: ln,
+          full_name: `${fn} ${ln}`.trim()
+        }
+      }
+    });
+
+    setLoading('signup-btn', false);
+
+    if (error) {
+      showError(error.message);
+      return;
     }
 
-    .hidden {
-      display: none;
+    if (data.session) {
+      showSuccess('Account created successfully. Loading workspace…');
+      setTimeout(() => enterDashboardFromUser(data.user), 500);
+    } else {
+      showSuccess('Account created. Check your email to verify, then sign in.');
+      switchTab('login');
+      document.getElementById('login-email').value = em;
+      document.getElementById('login-pass').value = '';
+    }
+  }
+
+  async function logout() {
+    await sb.auth.signOut();
+    currentUser = null;
+    document.getElementById('dashboard-page').style.display = 'none';
+    document.getElementById('auth-page').style.display = 'flex';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-pass').value = '';
+    hideAlerts();
+    switchTab('login');
+  }
+
+  function setPage(name, el) {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+    const labels = {
+      dashboard: 'Dashboard',
+      reports: 'Reports',
+      analytics: 'Analytics',
+      team: 'Team',
+      settings: 'Settings'
+    };
+    document.getElementById('page-title').textContent = labels[name] || name;
+    closeSidebar();
+  }
+
+  function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('menu-overlay').classList.add('open');
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('menu-overlay').classList.remove('open');
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    document.querySelectorAll('.form-input').forEach(inp => {
+      inp.addEventListener('blur', () => {
+        if (inp.value.length > 0) {
+          inp.classList.add('valid');
+          inp.classList.remove('invalid');
+        }
+      });
+
+      inp.addEventListener('input', () => {
+        if (inp.classList.contains('invalid') && inp.value.length > 0) {
+          inp.classList.remove('invalid');
+          inp.classList.add('valid');
+          const errId = inp.id + '-err';
+          const errEl = document.getElementById(errId);
+          if (errEl) errEl.classList.remove('show');
+        }
+      });
+    });
+
+    const { data, error } = await sb.auth.getSession();
+    if (data?.session?.user) {
+      enterDashboardFromUser(data.session.user);
     }
 
-    .auth-wrapper,
-    .dashboard-wrapper {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-
-    .card {
-      width: 100%;
-      max-width: 430px;
-      background: #ffffff;
-      border-radius: 16px;
-      padding: 28px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-    }
-
-    .card h1 {
-      font-size: 28px;
-      margin-bottom: 8px;
-      color: #0f172a;
-    }
-
-    .card p {
-      color: #64748b;
-      margin-bottom: 20px;
-    }
-
-    .brand {
-      color: #2563eb;
-      font-weight: 700;
-      margin-bottom: 18px;
-      font-size: 22px;
-    }
-
-    label {
-      display: block;
-      margin-bottom: 8px;
-      margin-top: 14px;
-      font-size: 14px;
-      color: #334155;
-      font-weight: 600;
-    }
-
-    input,
-    select,
-    textarea,
-    button {
-      width: 100%;
-      padding: 12px 14px;
-      border-radius: 10px;
-      border: 1px solid #dbe1ea;
-      font-size: 14px;
-    }
-
-    textarea {
-      min-height: 110px;
-      resize: vertical;
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-      outline: none;
-      border-color: #2563eb;
-    }
-
-    .btn {
-      background: #2563eb;
-      color: white;
-      border: none;
-      cursor: pointer;
-      font-weight: 700;
-      margin-top: 16px;
-    }
-
-    .btn:hover {
-      background: #1d4ed8;
-    }
-
-    .btn-secondary {
-      background: #e2e8f0;
-      color: #0f172a;
-      margin-top: 10px;
-    }
-
-    .btn-secondary:hover {
-      background: #cbd5e1;
-    }
-
-    .topbar {
-      background: #0f172a;
-      color: white;
-      padding: 16px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .topbar h2 {
-      font-size: 22px;
-    }
-
-    .dashboard {
-      max-width: 1100px;
-      margin: 24px auto;
-      padding: 0 16px 24px;
-    }
-
-    .welcome {
-      background: white;
-      border-radius: 16px;
-      padding: 22px;
-      margin-bottom: 20px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-    }
-
-    .welcome h3 {
-      margin-bottom: 6px;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-
-    .stat-card {
-      background: white;
-      border-radius: 14px;
-      padding: 18px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-    }
-
-    .stat-card h4 {
-      color: #64748b;
-      font-size: 14px;
-      margin-bottom: 10px;
-    }
-
-    .stat-card p {
-      font-size: 26px;
-      font-weight: 700;
-      color: #0f172a;
-    }
-
-    .section {
-      background: white;
-      border-radius: 16px;
-      padding: 22px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-      margin-bottom: 20px;
-    }
-
-    .section h3 {
-      margin-bottom: 16px;
-      color: #0f172a;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-
-    table th,
-    table td {
-      padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: left;
-      font-size: 14px;
-    }
-
-    table th {
-      color: #475569;
-      background: #f8
+    sb.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        enterDashboardFromUser(session.user);
+      }
+    });
+  });
+</script>
